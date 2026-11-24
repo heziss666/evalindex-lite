@@ -1,0 +1,6 @@
+{"id":"q1","benchmark":"KnowledgeDemo","kind":"choice","prompt":"演示题（非官方 Benchmark）：Python 中哪个数据结构遵循 FIFO？A. stack B. queue C. tree D. tuple。仅回答 Final Answer: <选项>","gold":"B","choices":["A","B","C","D"]}
+{"id":"q2","benchmark":"KnowledgeDemo","kind":"choice","prompt":"演示题（非官方 Benchmark）：2+2=? A. 3 B. 5 C. 4 D. 1。仅回答 Final Answer: <选项>","gold":"C","choices":["A","B","C","D"]}
+{"id":"m1","benchmark":"MathDemo","kind":"number","prompt":"演示题：先计算 24 的三分之一，再计算 24 减去它，加 10，减 5。最终以 Final Answer: <数字> 输出。","gold":"21"}
+{"id":"m2","benchmark":"MathDemo","kind":"number","prompt":"演示题：1/4 + 1/4 等于多少？最终以 Final Answer: <数字或分数> 输出。","gold":"0.5"}
+{"id":"i1","benchmark":"InstructionDemo","kind":"constraints","prompt":"演示题：回复必须包含字词‘模型’，不得包含‘违规’，并以 END 结尾。","rules":[{"type":"contains","value":"模型"},{"type":"not_contains","value":"违规"},{"type":"endswith","value":"END"}]}
+{"id":"i2","benchmark":"InstructionDemo","kind":"constraints","prompt":"演示题：以‘评测’开头，字数不超过 40 个字符。","rules":[{"type":"startswith","value":"评测"},{"type":"max_chars","value":40}]}
