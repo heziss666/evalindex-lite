@@ -1,6 +1,6 @@
 # M2 · InFoBench 与 LLM Judge
 
-离线实现已完成。37 项单元与回归测试通过，包含本地 Mock HTTP 的四种运行模式、错误和重试、断点续跑、评分协议隔离及无 API 重聚合。正式题单和冒烟题单分别从远端及同 SHA-256 的本地原始文件导出，结果逐字节一致。外部模型 API 请求为 0。真实冒烟需要本机配置 API Key。正式实验在冒烟结果核验并获得确认后执行。
+已完成离线验证和 5 题真实 API 冒烟。37 项单元与回归测试通过，覆盖四种运行模式、错误和重试、断点续跑、评分协议隔离及无 API 重聚合。正式题单和冒烟题单分别从远端及同 SHA-256 的本地原始文件导出，结果逐字节一致。正式实验等待确认。
 
 ## 配置 API Key
 
@@ -19,7 +19,7 @@ code .env
 | Candidate B | `glm-4.7-flash` | `https://open.bigmodel.cn/api/paas/v4` | `BIGMODEL_API_KEY` |
 | Judge A | `deepseek-v4-pro` | `https://api.deepseek.com` | `DEEPSEEK_API_KEY` |
 
-Qwen 示例对应百炼北京按量付费，使用同地域 Key，也可以填控制台给出的业务空间专属地址。Base URL 由客户端追加 `/chat/completions`。三个角色均配置关闭思考，候选输出上限 2,048 tokens，Judge 上限 256 tokens，并发默认 2。GLM 免费接口实际可用额度及限流以账号为准。[百炼接口](https://help.aliyun.com/zh/model-studio/base-url) · [智谱模型与接口](https://docs.bigmodel.cn/cn/guide/models/free/glm-4.7-flash) · [智谱免费公告](https://www.zhipuai.cn/zh/news/148) · [DeepSeek 接口](https://api-docs.deepseek.com/zh-cn/api/create-chat-completion/)
+Qwen 示例对应百炼北京按量付费，使用同地域 Key，也可以填控制台给出的业务空间专属地址。Base URL 由客户端追加 `/chat/completions`。三个角色均配置关闭思考，候选输出上限 2,048 tokens，Judge 上限 256 tokens。冒烟后默认并发调为 1，适配 GLM 免费接口的实际限流表现。GLM 免费接口实际可用额度及限流以账号为准。[百炼接口](https://help.aliyun.com/zh/model-studio/base-url) · [智谱模型与接口](https://docs.bigmodel.cn/cn/guide/models/free/glm-4.7-flash) · [智谱免费公告](https://www.zhipuai.cn/zh/news/148) · [DeepSeek 接口](https://api-docs.deepseek.com/zh-cn/api/create-chat-completion/)
 
 ## 费用估算
 
@@ -33,6 +33,26 @@ Qwen 示例对应百炼北京按量付费，使用同地域 Key，也可以填�
 假设每条候选回答 600 输出 tokens、每条 Judge 回复 12 tokens，输入按约 4 字符/token 加消息开销估计。两行是各阶段独立运行的预算，未计重试、缓存或免费券。正式运行复用冒烟成功记录时，首次完整成功后还需约 50 次生成和 214 次 Judge 请求。若候选和 Judge 都用满配置的输出上限，高峰下冒烟与正式约 ¥1.51、¥8.78，依然是场景估计。
 
 建议首轮采用 Pro Judge 并在空闲时段运行。它是该平台的较强档位，用于评分时与两个候选模型分属不同平台。其准确性需要人工复审验证。若优先节省，可以把 `judge_a.model` 改为 `deepseek-flash`，高峰 `pricing` 改为输入 2、缓存输入 0.04、输出 8。换 Judge 后使用新的运行目录，分别查看成绩。[DeepSeek 模型与价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)
+
+## 真实冒烟结果
+
+2026-11-24 晚间（北京时间）使用 `official` 协议、固定 5 题和 DeepSeek V4 Pro 完成真实冒烟。每个模型有 22 条要求，两边评分覆盖率都是 100%。
+
+| 候选模型 | DRFR | Prompt-level Mean Pass | Prompt-level All-pass |
+| --- | ---: | ---: | ---: |
+| Qwen3.7 Flash | 86.36%（19/22） | 85.0% | 60.0%（3/5） |
+| GLM-4.7-Flash | 68.18%（15/22） | 66.5% | 20.0%（1/5） |
+
+| 角色 | API 请求 | 已报告输入 tokens | 已报告输出 tokens |
+| --- | ---: | ---: | ---: |
+| Qwen | 5 | 385 | 2,979 |
+| GLM | 20 | 344 | 2,753 |
+| DeepSeek Judge | 44 | 37,419 | 44 |
+| 合计 | 69 | 38,148 | 5,776 |
+
+GLM 的 20 次请求中有 15 次返回 HTTP 429，未上报用量。首次使用并发 2，切到并发 1 后续跑两次，最终 5 题均生成成功，最慢一次成功请求约 72 秒。续跑期间复用了已完成的回答与 Judge 判定。44 条 Judge 回复均成功解析，候选与 Judge 成功输出均未截断。
+
+DeepSeek 输入中 26,112 tokens 命中缓存，11,307 tokens 未命中。按已上报用量和空闲时段单价估算，总费用约 **¥0.058**。结算金额以平台账单为准。离线 Aggregate 的 API 调用数为 0，重新生成的五个结果文件均与原文件一致。这 5 题用于检查链路和限流表现，Judge 判分准确性仍待人工复核。原始记录在本地 `runs/m2/smoke/official/`。[DeepSeek 缓存与时段单价](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)
 
 ## 命令
 

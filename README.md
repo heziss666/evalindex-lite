@@ -6,7 +6,7 @@
 
 ## M2 · InFoBench
 
-InFoBench 通过逐条语义判定评估指令遵循，支持官方 YES/NO 评分和独立的 EvalIndex JSON 评分。它作为单独的评测维度。当前可离线抽题、估算费用并用 Mock 验证流程。
+InFoBench 通过逐条语义判定评估指令遵循，支持官方 YES/NO 评分和独立的 EvalIndex JSON 评分。它作为单独的评测维度。已完成真实 API 冒烟，报告包含用量、费用和限流恢复结果。
 
 ```powershell
 python -m evalindex.infobench export

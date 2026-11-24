@@ -2,7 +2,7 @@
   "seed": 42,
   "sample_count": 30,
   "smoke_count": 5,
-  "workers": 2,
+  "workers": 1,
   "models": {
     "candidate_a": {
       "provider": "qwen",
