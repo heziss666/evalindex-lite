@@ -125,6 +125,17 @@ class TestInFoBench(TestCase):
         self.assertEqual(attempts[0]["provider_error_code"], "1308")
         self.assertNotIn("private details", json.dumps(attempts))
 
+    def test_kimi_quota_stops_retries_and_records_only_error_type(self):
+        model = json.loads(Path("configs/infobench.json").read_text(encoding="utf-8"))["models"]["candidate_b"]
+        body = BytesIO(b'{"error":{"type":"exceeded_current_quota_error","message":"private details"}}')
+        denied = HTTPError("https://example.invalid", 429, "", {}, body)
+        with patch.object(api, "chat_completion", side_effect=denied) as call, patch.object(api.time, "sleep") as sleep:
+            _, attempts = api.request(model, [])
+        self.assertEqual(call.call_count, 1)
+        sleep.assert_not_called()
+        self.assertEqual(attempts[0]["provider_error_type"], "exceeded_current_quota_error")
+        self.assertNotIn("private details", json.dumps(attempts))
+
     def test_human_review_samples_each_candidates_passes_and_failures(self):
         rows = [
             {

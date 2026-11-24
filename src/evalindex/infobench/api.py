@@ -14,6 +14,7 @@ ROLES = (*CANDIDATES, "judge_a")
 EXTRA_FORBIDDEN = {"model", "messages", "max_tokens", "max_completion_tokens", "temperature", "stream", "api_key", "headers"}
 # BigModel's account, quota, and entitlement errors need an external change before retrying.
 GLM_TERMINAL_LIMITS = {"1113", "1308", "1309", "1310", "1311", *(str(code) for code in range(1313, 1322))}
+KIMI_LIMIT_TYPES = {"engine_overloaded_error", "rate_limit_reached_error", "exceeded_current_quota_error"}
 
 
 def validate_models(models):
@@ -76,14 +77,13 @@ def require_keys(models, roles):
         raise ValueError("Missing API environment variables: " + ", ".join(missing))
 
 
-def glm_error_code(exc):
+def provider_error_field(exc, field):
     if exc.fp is None:
         return None
     try:
-        code = str(json.loads(exc.read(4096))["error"]["code"])
+        return str(json.loads(exc.read(4096))["error"][field])
     except (ValueError, TypeError, KeyError, OSError):
         return None
-    return code if re.fullmatch(r"[0-9]{3,5}", code) else None
 
 
 def request(model, messages, parse=None, save=None):
@@ -105,10 +105,16 @@ def request(model, messages, parse=None, save=None):
             retryable = exc.code in {408, 429} or 500 <= exc.code < 600
             retry_after = (exc.headers or {}).get("Retry-After", "")
             if exc.code == 429 and model["provider"] == "glm":
-                code = glm_error_code(exc)
-                if code:
+                code = provider_error_field(exc, "code")
+                if code and re.fullmatch(r"[0-9]{3,5}", code):
                     result["provider_error_code"] = code
                 retryable = retryable and code not in GLM_TERMINAL_LIMITS
+                delay = max(delay, 5 * (2 ** retry))
+            if exc.code == 429 and model["provider"] == "kimi":
+                kind = provider_error_field(exc, "type")
+                if kind in KIMI_LIMIT_TYPES:
+                    result["provider_error_type"] = kind
+                retryable = retryable and kind != "exceeded_current_quota_error"
                 delay = max(delay, 5 * (2 ** retry))
             if retry_after.isdigit():
                 delay = max(delay, int(retry_after))
