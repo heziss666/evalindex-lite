@@ -128,7 +128,8 @@ def review_sample(rows, limit=20):
             if check["status"] == "not_scored":
                 continue
             disagreement = len(votes.get(check["requirement_id"], ())) > 1
-            key = (check["status"], check["verdict"], generation.get("finish_reason") == "length", disagreement)
+            key = (row["candidate"], check["status"], check["verdict"],
+                   generation.get("finish_reason") == "length", disagreement)
             buckets.setdefault(key, []).append({
                 "task_id": row["id"], "category": row["category"], "candidate": row["candidate"],
                 "instruction": row["instruction"], "input": row["input"],

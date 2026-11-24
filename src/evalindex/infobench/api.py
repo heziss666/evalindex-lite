@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import time
@@ -11,6 +12,8 @@ from ..model import chat_completion
 CANDIDATES = ("candidate_a", "candidate_b")
 ROLES = (*CANDIDATES, "judge_a")
 EXTRA_FORBIDDEN = {"model", "messages", "max_tokens", "temperature", "stream", "api_key", "headers"}
+# BigModel's account, quota, and entitlement errors need an external change before retrying.
+GLM_TERMINAL_LIMITS = {"1113", "1308", "1309", "1310", "1311", *(str(code) for code in range(1313, 1322))}
 
 
 def validate_models(models):
@@ -63,6 +66,16 @@ def require_keys(models, roles):
         raise ValueError("Missing API environment variables: " + ", ".join(missing))
 
 
+def glm_error_code(exc):
+    if exc.fp is None:
+        return None
+    try:
+        code = str(json.loads(exc.read(4096))["error"]["code"])
+    except (ValueError, TypeError, KeyError, OSError):
+        return None
+    return code if re.fullmatch(r"[0-9]{3,5}", code) else None
+
+
 def request(model, messages, parse=None, save=None):
     attempts = []
     for retry in range(model["retries"] + 1):
@@ -80,6 +93,12 @@ def request(model, messages, parse=None, save=None):
             status, result = "api_error", {"error": f"http_{exc.code}"}
             retryable = exc.code in {408, 429} or 500 <= exc.code < 600
             retry_after = (exc.headers or {}).get("Retry-After", "")
+            if exc.code == 429 and model["provider"] == "glm":
+                code = glm_error_code(exc)
+                if code:
+                    result["provider_error_code"] = code
+                retryable = retryable and code not in GLM_TERMINAL_LIMITS
+                delay = max(delay, 5 * (2 ** retry))
             if retry_after.isdigit():
                 delay = max(delay, int(retry_after))
                 retryable = retryable and delay <= 60

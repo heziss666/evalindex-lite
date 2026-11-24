@@ -3,6 +3,7 @@ import json
 import tempfile
 from copy import deepcopy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from io import BytesIO
 from pathlib import Path
 from threading import Thread
 from unittest import TestCase
@@ -12,7 +13,7 @@ from urllib.error import HTTPError
 from evalindex.datasets import infobench as dataset
 from evalindex.infobench import api
 from evalindex.infobench.__main__ import main
-from evalindex.infobench.metrics import scores, usage_report
+from evalindex.infobench.metrics import review_sample, scores, usage_report
 from evalindex.infobench.protocol import judge_messages, parse_judgment
 from evalindex.infobench.storage import Journal, run_lock, write_report
 
@@ -112,6 +113,38 @@ class TestInFoBench(TestCase):
         self.assertIsNone(report["tokens_reported"]["reasoning"])
         self.assertEqual(report["requests_without_cost"], 1)
         self.assertAlmostEqual(report["estimated_reported_cost"], 0.00092)
+
+    def test_glm_quota_stops_retries_and_records_only_error_code(self):
+        model = json.loads(Path("configs/infobench.json").read_text(encoding="utf-8"))["models"]["candidate_b"]
+        body = BytesIO(b'{"error":{"code":"1308","message":"private details"}}')
+        denied = HTTPError("https://example.invalid", 429, "", {}, body)
+        with patch.object(api, "chat_completion", side_effect=denied) as call, patch.object(api.time, "sleep") as sleep:
+            _, attempts = api.request(model, [])
+        self.assertEqual(call.call_count, 1)
+        sleep.assert_not_called()
+        self.assertEqual(attempts[0]["provider_error_code"], "1308")
+        self.assertNotIn("private details", json.dumps(attempts))
+
+    def test_human_review_samples_each_candidates_passes_and_failures(self):
+        rows = [
+            {
+                "id": f"task-{index}", "category": "fixture", "candidate": role,
+                "instruction": "Write a response.", "input": "",
+                "generation": {"response": "Candidate answer.", "finish_reason": "stop"},
+                "requirements": [
+                    {"requirement_id": f"task-{index}:r1", "verdict": "pass", "status": "ok"},
+                    {"requirement_id": f"task-{index}:r2", "verdict": "fail", "status": "ok"},
+                ],
+            }
+            for role in ("candidate_a", "candidate_b") for index in range(12)
+        ]
+        sample = review_sample(rows)
+        self.assertEqual(len(sample), 20)
+        self.assertEqual({(item["candidate"], item["verdict"]) for item in sample}, {
+            ("candidate_a", "pass"), ("candidate_a", "fail"),
+            ("candidate_b", "pass"), ("candidate_b", "fail"),
+        })
+        self.assertTrue(all(item["human_verdict"] is None for item in sample))
 
     def test_judge_parse_failure_is_retried_and_saved(self):
         model = json.loads(Path("configs/infobench.json").read_text(encoding="utf-8"))["models"]["judge_a"]
