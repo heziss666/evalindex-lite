@@ -8,6 +8,7 @@ from importlib.metadata import version
 from pathlib import Path
 
 from .analysis import badcase
+from .ifeval_scoring import scorer_version as ifeval_version, summarize_ifeval
 from .scoring import score_task
 from .model import chat_completion
 
@@ -39,6 +40,18 @@ def git_commit():
         return None
 
 
+def scorer_versions(tasks):
+    kinds = {task["kind"] for task in tasks}
+    scorers = {}
+    if "mmlu_pro" in kinds:
+        scorers["MMLU-Pro"] = {"adapter": "mmlu-pro-v1"}
+    if "math_500" in kinds:
+        scorers["MATH-500"] = {"adapter": "math-500-v1", "math_verify": version("math-verify")}
+    if "ifeval" in kinds:
+        scorers["IFEval"] = ifeval_version()
+    return scorers
+
+
 def summarize(rows, weights):
     groups = {}
     for row in rows:
@@ -54,6 +67,8 @@ def summarize(rows, weights):
                   "scored": len(scored), "total": len(items), "invalid": invalid}
         if items[0]["kind"] in {"mmlu_pro", "math_500"}:
             result.update(accuracy=result["score"], **badcase.counts(items))
+        if items[0]["kind"] == "ifeval":
+            result.update(summarize_ifeval(items))
         if any(x["kind"] == "constraints" for x in items):
             checks = [x["details"].get("checks", []) for x in scored if x["kind"] == "constraints"]
             count = sum(len(a) for a in checks)
@@ -94,6 +109,7 @@ def main():
     predictions = load_jsonl(args.replay) if args.replay else []
     validate_ids(predictions)
     replay = {x["id"]: x for x in predictions}
+    scorers = scorer_versions(tasks)
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
     results = []
@@ -115,9 +131,12 @@ def main():
         graded = score_task(t, model_result["response"])
         result = {"id": t["id"], "benchmark": t["benchmark"], "kind": t["kind"],
                   **model_result, **graded}
-        for key in ("gold", "source_id", "question", "category", "options", "level"):
+        for key in ("gold", "source_id", "question", "category", "options", "level",
+                    "instruction_id_list", "kwargs"):
             if key in t:
                 result[key] = t[key]
+        if t["kind"] == "ifeval":
+            result["prompt"] = prompt
         results.append(result)
     dump_jsonl(output / "results.jsonl", results)
     summary = summarize(results, weights)
@@ -129,16 +148,21 @@ def main():
         task["benchmark"]: {k: v for k, v in task["dataset"].items() if k != "source_index"}
         for task in tasks if "dataset" in task
     }
-    if dataset_metadata:
+    if scorers or dataset_metadata:
         summary["run"].update(
             mode="replay" if args.replay else "live",
             model_revision=args.model_revision, commit=git_commit(), datasets=dataset_metadata,
+            scorers=scorers,
+            protocol=None if args.replay else {
+                "inference": "chat-completions-v1",
+                "temperature": args.temperature, "max_tokens": args.max_tokens,
+            },
             note="Zero-shot subset scores under the EvalIndex Lite protocol",
         )
-        if "MATH-500" in dataset_metadata:
-            summary["run"]["math_verify_version"] = version("math-verify")
+        if "MATH-500" in scorers:
+            summary["run"]["math_verify_version"] = scorers["MATH-500"]["math_verify"]
         dump_jsonl(output / "badcases.jsonl", badcase.collect(
-            row for row in results if row["kind"] in {"mmlu_pro", "math_500"}
+            row for row in results if row["kind"] in {"mmlu_pro", "math_500", "ifeval"}
         ))
     (output / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(summary, ensure_ascii=False, indent=2))

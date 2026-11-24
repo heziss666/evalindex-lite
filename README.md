@@ -1,6 +1,6 @@
 # EvalIndex Lite — 可运行的多维 LLM 评测项目脚手架
 
-> EvalIndex Lite 已接入真实 MMLU-Pro 与 MATH-500 题库，使用本项目的 zero-shot 抽样协议。`data/demo_*` 用于验证 Replay 链路。
+> EvalIndex Lite 已接入 MMLU-Pro、MATH-500 和 IFEval，支持 zero-shot 抽样、真实推理和 Replay 复评分。`data/demo_*` 用于验证 Replay 链路。
 
 ## 目标
 
@@ -73,6 +73,48 @@ foreach ($model in $models) {
 
 MMLU-Pro 要求输出单行 `Final Answer: X`，字母大小写均可。MATH-500 提示只输出一行 LaTeX 答案，评分器从最后一行 `Final Answer:` 提取表达式，再用 Math-Verify 判定与参考答案是否等价。两个数据集都将解析失败计为 0 分，并保留在 Accuracy 的分母中。题目及选项进入模型请求，参考答案留在评分端。30 题抽样分数仅适用于本次协议。
 
+## 运行 IFEval 和三项综合 Index
+
+IFEval 随项目提供 Google Research 原始 541 道题和官方评分器，固定在同一提交。源文件保留 Apache 2.0 许可与版权信息。移植修改了包导入，并给语言检测和官方约束的随机回退固定 seed 0。评测发送原始 prompt，汇总记录评分器提交、依赖版本与 NLTK 英文分句数据哈希。[官方数据与评分器](https://github.com/google-research/google-research/tree/e6890f85757dd84e27ca6df2dd30651dafad28e0/instruction_following_eval)
+
+```powershell
+python -m pip install -e ".[benchmarks]"
+python -m nltk.downloader punkt_tab
+python -m evalindex.datasets --benchmarks IFEval --count 541 --output data/benchmarks/ifeval-full
+python -m evalindex.datasets --benchmarks MMLU-Pro MATH-500 IFEval --count 30 --smoke-count 5 --output data/benchmarks/m1
+```
+
+第一条导出命令生成全量 IFEval 题单。第二条命令以 seed 42 无放回各抽 30 题，并从每个子集取前 5 题作为冒烟题。沿用上一节模型服务和 PowerShell 的 `$models`、`$cfg`，依次跑冒烟、正式评测和排行。
+
+```powershell
+$weights = 'configs/real_index_weights.json'
+foreach ($stage in 'smoke', 'tasks') {
+    foreach ($model in $models) {
+        python -m evalindex --model $model.id --base-url $model.url --model-revision $model.revision --temperature $cfg.temperature --max-tokens $cfg.max_tokens --data "data/benchmarks/m1/$stage.jsonl" --weights $weights --output "runs/m1/$stage/$($model.id)"
+        if ($LASTEXITCODE -ne 0) { throw "Evaluation failed for $($model.id) at $stage" }
+    }
+}
+$summaries = @($models | ForEach-Object { "runs/m1/tasks/$($_.id)/summary.json" })
+python -m evalindex.compare @summaries --out runs/m1/leaderboard.json
+```
+
+| IFEval 指标 | 分子 | 分母 |
+| --- | --- | --- |
+| Prompt-level Strict | 所有约束在原始回复上都通过的题数 | 总题数 |
+| Prompt-level Loose | 所有约束都通过官方宽松检查的题数 | 总题数 |
+| Instruction-level Strict | 在原始回复上通过的约束数 | 总约束数 |
+| Instruction-level Loose | 通过官方宽松检查的约束数 | 总约束数 |
+
+Loose 对每条约束尝试原始文本及官方规定的变体，包括去掉星号、去掉首行或末行。各约束可以在不同变体上通过。`results.jsonl` 保存逐约束的 Strict 和 Loose 布尔值。Strict 失败的题进入 `badcases.jsonl`，其中还能看出哪些约束在 Loose 下通过。
+
+综合 Index 是 MMLU-Pro Accuracy、MATH-500 Accuracy 和 IFEval Prompt-level Strict 的平均值乘 100。缺少任一维度时 `overall_index` 为 `null`。排行榜要求真实运行的题单哈希、数据集版本、抽样与提示设置、评分器版本、生成协议和权重一致。旧版真实结果需要重新运行以补齐协议元数据。
+
+使用正式原始响应做 Replay 时，保留原题单和同一权重配置。
+
+```powershell
+python -m evalindex --data data/benchmarks/m1/tasks.jsonl --weights configs/real_index_weights.json --replay runs/m1/tasks/qwen2.5-0.5b-instruct-q4_k_m/results.jsonl --output runs/m1/replay-0.5b
+```
+
 ## 代码结构
 
 ```text
@@ -81,10 +123,13 @@ src/evalindex/
   model.py       # OpenAI-compatible HTTP adapter
   scoring.py     # 演示用选择题、数值题、指令约束评分
   benchmark_scoring.py
-  datasets/     # 两个数据集的加载、抽样与题目构造
+  ifeval_scoring.py
+  datasets/     # 加载、抽样与题目构造
+  _vendor/ifeval/ # 官方 IFEval 数据与评分器
   analysis/     # 错误样本与解析失败统计
 configs/
   index_weights.json
+  real_index_weights.json
  data/
    demo_tasks.jsonl
    demo_predictions.jsonl
@@ -98,8 +143,8 @@ configs/
 - 所有原始模型输出须保存，支持不重新推理就重跑评分器（Replay/Audit）。
 - 数据集 `id` 必须唯一；至少记录数据集版本/哈希、模型版本、配置、Prompt 模板、输出长度和时间。
 - 解析失败应按预先声明的政策处理；本演示将无法解析答案视为该题 0 分，并另外记录 `valid=false`。
-- 演示 `number` 只支持普通数值及简单分数，不支持 LaTeX、集合和符号表达式。正式 MATH-500 请接入 `math_verify` 并做反例验证。
-- 演示 `constraints` 只实现基本字符串规则。正式 IFEval 必须调用官方检查器，不能把这些规则称为 IFEval 分数。
+- 演示 `number` 支持普通数值及简单分数。MATH-500 使用 `math_verify` 判定数学等价。
+- 演示 `constraints` 使用基本字符串规则。IFEval 调用官方 Strict 与 Loose 检查器。
 - `rubric` 类型目前显式返回 `score=null`；未连接、未校准 Judge 时不得假装已有得分。
 - 综合分数需有明确且固定权重，必须同时报告各维度分数。缺失任一规定维度时不输出整体 Index。
 - 公开测试集可能存在数据污染；只将独立、同协议的结果用于模型比较。

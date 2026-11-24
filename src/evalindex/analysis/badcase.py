@@ -2,6 +2,8 @@ from collections import Counter
 
 
 def error_type(row):
+    if row["kind"] == "ifeval" and row["score"] == 0:
+        return "instruction_failure"
     if not row["valid"]:
         return "parse_failure"
     if row["score"] == 0:
