@@ -26,10 +26,10 @@ def load_rows(name, dataset):
 def main():
     parser = argparse.ArgumentParser(description="Export pinned benchmark subsets to JSONL")
     parser.add_argument("--config", default="configs/benchmarks.json", type=Path)
-    parser.add_argument("--output", default="data/benchmarks", type=Path)
+    parser.add_argument("--output", default="data/benchmarks/m1", type=Path)
     parser.add_argument("--count", default=30, type=int, help="Number of questions per dataset")
     parser.add_argument("--smoke-count", default=5, type=int, help="Prefix size per dataset")
-    parser.add_argument("--benchmarks", nargs="+", choices=BUILDERS, default=["MMLU-Pro", "MATH-500"])
+    parser.add_argument("--benchmarks", nargs="+", choices=BUILDERS, default=list(BUILDERS))
     args = parser.parse_args()
     if not 0 < args.smoke_count <= args.count:
         parser.error("Require 0 < smoke-count <= count")

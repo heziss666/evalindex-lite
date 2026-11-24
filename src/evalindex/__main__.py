@@ -83,7 +83,7 @@ def summarize(rows, weights):
 
 def main():
     parser = argparse.ArgumentParser(prog="evalindex", description="EvalIndex Lite - evaluator scaffold")
-    parser.add_argument("--data", default="data/demo_tasks.jsonl", help="JSONL tasks")
+    parser.add_argument("--data", default="data/benchmarks/m1/tasks.jsonl", help="JSONL tasks")
     parser.add_argument("--weights", default="configs/index_weights.json", help="Composite weights JSON")
     parser.add_argument("--replay", help="JSONL of saved responses (keyed by id)")
     parser.add_argument("--model", help="OpenAI-compatible model identifier")

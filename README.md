@@ -1,6 +1,8 @@
 # EvalIndex Lite — 可运行的多维 LLM 评测项目脚手架
 
-> EvalIndex Lite 已接入 MMLU-Pro、MATH-500 和 IFEval，支持 zero-shot 抽样、真实推理和 Replay 复评分。`data/demo_*` 用于验证 Replay 链路。
+> EvalIndex Lite 已接入 MMLU-Pro、MATH-500 和 IFEval，支持 zero-shot 抽样、真实推理和 Replay 复评分。演示输入集中在 `tests/fixtures/demo/`。
+
+[当前 M1 实验报告](docs/m1-ifeval-report.md)
 
 ## 目标
 
@@ -8,13 +10,14 @@
 
 ## 立刻运行（不需要 GPU、不需要 API Key）
 
-```bash
+```powershell
 python -m pip install -e ".[benchmarks]"
-python -m evalindex --data data/demo_tasks.jsonl --replay data/demo_predictions.jsonl --output runs/replay-demo
+$demoOutput = Join-Path ([IO.Path]::GetTempPath()) 'evalindex-replay-demo'
+python -m evalindex --data tests/fixtures/demo/tasks.jsonl --replay tests/fixtures/demo/predictions.jsonl --weights tests/fixtures/demo/weights.json --output $demoOutput
 python -m unittest discover -s tests -v
 ```
 
-输出：`runs/replay-demo/results.jsonl`（逐条结果）和 `summary.json`（分项、指数）。这是 **Replay 模式**，它只测试评测管线，不调用模型。
+临时目录 `$demoOutput` 包含 `results.jsonl`（逐条结果）和 `summary.json`（分项、指数）。这是 **Replay 模式**，它只测试评测管线，不调用模型。
 
 ## 真正调用模型
 
@@ -23,20 +26,12 @@ python -m unittest discover -s tests -v
 ```bash
 export EVAL_BASE_URL=http://localhost:8000/v1
 export EVAL_API_KEY=your-key-if-needed
-python -m evalindex --data data/demo_tasks.jsonl --model YOUR_MODEL_ID --output runs/my-model
+python -m evalindex --data tests/fixtures/demo/tasks.jsonl --model YOUR_MODEL_ID --weights tests/fixtures/demo/weights.json --output runs/my-model
 ```
 
 **参数注意**：默认 temperature=0、max_tokens=1024；不同模型/推理端点可能不支持同样的采样参数，需根据模型调整并在报告中记录。`YOUR_MODEL_ID` 应当与服务端注册的 model id 一致。不要把 API Key 提交到仓库。
 
-## 运行 MMLU-Pro 和 MATH-500
-
-在项目目录执行以下 PowerShell 命令。安装额外依赖后，从固定的 Hugging Face revision 下载两套题库的 `test` split。使用 seed 42 无放回各取 30 题，另将每套的前 5 题保存为冒烟子集。
-
-```powershell
-python -m pip install -e ".[benchmarks]"
-python -m unittest discover -s tests -v
-python -m evalindex.datasets --count 30 --smoke-count 5
-```
+## 启动本地模型服务
 
 启动兼容 OpenAI Chat Completions 的服务。把服务地址和模型 ID 换成实际值，鉴权密钥如有需要可通过 `EVAL_API_KEY` 环境变量提供。以下示例使用两个端口，每个端口服务一个模型。
 
@@ -55,18 +50,6 @@ $models = @(
     @{ id = 'qwen2.5-0.5b-instruct-q4_k_m'; url = 'http://127.0.0.1:18080/v1'; revision = '9217f5db79a29953eb74d5343926648285ec7e67' },
     @{ id = 'qwen2.5-1.5b-instruct-q4_k_m'; url = 'http://127.0.0.1:18081/v1'; revision = '91cad51170dc346986eccefdc2dd33a9da36ead9' }
 )
-foreach ($model in $models) {
-    $sample = @('--model', $model.id, '--base-url', $model.url, '--model-revision', $model.revision,
-                '--temperature', $cfg.temperature, '--max-tokens', $cfg.max_tokens)
-    python -m evalindex @sample --data data/benchmarks/smoke.jsonl --output "runs/smoke-$($model.id)"
-    if ($LASTEXITCODE -ne 0) { throw "Smoke test failed for $($model.id)" }
-}
-foreach ($model in $models) {
-    $sample = @('--model', $model.id, '--base-url', $model.url, '--model-revision', $model.revision,
-                '--temperature', $cfg.temperature, '--max-tokens', $cfg.max_tokens)
-    python -m evalindex @sample --data data/benchmarks/tasks.jsonl --output "runs/$($model.id)"
-    if ($LASTEXITCODE -ne 0) { throw "Evaluation failed for $($model.id)" }
-}
 ```
 
 每次运行生成 `results.jsonl`（原始输出、参考答案、解析结果、分数、结束原因）、`summary.json`（各数据集 Accuracy、解析失败计数及原因、运行元数据）和 `badcases.jsonl`（答错和解析失败的逐题记录）。使用已保存输出复评分时，可将模型参数换成 `--replay runs/<模型>/results.jsonl`，并使用新的输出目录。
@@ -80,17 +63,17 @@ IFEval 随项目提供 Google Research 原始 541 道题和官方评分器，固
 ```powershell
 python -m pip install -e ".[benchmarks]"
 python -m nltk.downloader punkt_tab
-python -m evalindex.datasets --benchmarks IFEval --count 541 --output data/benchmarks/ifeval-full
-python -m evalindex.datasets --benchmarks MMLU-Pro MATH-500 IFEval --count 30 --smoke-count 5 --output data/benchmarks/m1
+python -m evalindex.datasets --count 30 --smoke-count 5
 ```
 
-第一条导出命令生成全量 IFEval 题单。第二条命令以 seed 42 无放回各抽 30 题，并从每个子集取前 5 题作为冒烟题。沿用上一节模型服务和 PowerShell 的 `$models`、`$cfg`，依次跑冒烟、正式评测和排行。
+导出命令以 seed 42 从三个数据集无放回各抽 30 题，并从每个子集取前 5 题作为冒烟题。沿用上一节模型服务和 PowerShell 的 `$models`、`$cfg`，依次跑冒烟、正式评测和排行。
+
+如需临时查看全量 IFEval，可运行 `python -m evalindex.datasets --benchmarks IFEval --count 541 --output (Join-Path ([IO.Path]::GetTempPath()) 'evalindex-ifeval-full')`。
 
 ```powershell
-$weights = 'configs/real_index_weights.json'
 foreach ($stage in 'smoke', 'tasks') {
     foreach ($model in $models) {
-        python -m evalindex --model $model.id --base-url $model.url --model-revision $model.revision --temperature $cfg.temperature --max-tokens $cfg.max_tokens --data "data/benchmarks/m1/$stage.jsonl" --weights $weights --output "runs/m1/$stage/$($model.id)"
+        python -m evalindex --model $model.id --base-url $model.url --model-revision $model.revision --temperature $cfg.temperature --max-tokens $cfg.max_tokens --data "data/benchmarks/m1/$stage.jsonl" --output "runs/m1/$stage/$($model.id)"
         if ($LASTEXITCODE -ne 0) { throw "Evaluation failed for $($model.id) at $stage" }
     }
 }
@@ -107,12 +90,13 @@ python -m evalindex.compare @summaries --out runs/m1/leaderboard.json
 
 Loose 对每条约束尝试原始文本及官方规定的变体，包括去掉星号、去掉首行或末行。各约束可以在不同变体上通过。`results.jsonl` 保存逐约束的 Strict 和 Loose 布尔值。Strict 失败的题进入 `badcases.jsonl`，其中还能看出哪些约束在 Loose 下通过。
 
-综合 Index 是 MMLU-Pro Accuracy、MATH-500 Accuracy 和 IFEval Prompt-level Strict 的平均值乘 100。缺少任一维度时 `overall_index` 为 `null`。排行榜要求真实运行的题单哈希、数据集版本、抽样与提示设置、评分器版本、生成协议和权重一致。旧版真实结果需要重新运行以补齐协议元数据。
+默认题单是 `data/benchmarks/m1/tasks.jsonl`，默认权重是 `configs/index_weights.json`。综合 Index 是 MMLU-Pro Accuracy、MATH-500 Accuracy 和 IFEval Prompt-level Strict 的平均值乘 100。缺少任一维度时 `overall_index` 为 `null`。排行榜要求真实运行的题单哈希、数据集版本、抽样与提示设置、评分器版本、生成协议和权重一致。旧版真实结果需要重新运行以补齐协议元数据。
 
 使用正式原始响应做 Replay 时，保留原题单和同一权重配置。
 
 ```powershell
-python -m evalindex --data data/benchmarks/m1/tasks.jsonl --weights configs/real_index_weights.json --replay runs/m1/tasks/qwen2.5-0.5b-instruct-q4_k_m/results.jsonl --output runs/m1/replay-0.5b
+$replayOutput = Join-Path ([IO.Path]::GetTempPath()) 'evalindex-replay-0.5b'
+python -m evalindex --replay runs/m1/tasks/qwen2.5-0.5b-instruct-q4_k_m/results.jsonl --output $replayOutput
 ```
 
 ## 代码结构
@@ -128,13 +112,14 @@ src/evalindex/
   _vendor/ifeval/ # 官方 IFEval 数据与评分器
   analysis/     # 错误样本与解析失败统计
 configs/
+  benchmarks.json
   index_weights.json
-  real_index_weights.json
- data/
-   demo_tasks.jsonl
-   demo_predictions.jsonl
- tests/
-   test_scoring.py
+data/benchmarks/ # 导出的正式题单和冒烟题单
+docs/            # 实验报告与历史任务说明
+runs/            # 逐题结果、汇总和排行榜
+tests/
+  fixtures/demo/ # 演示题目、两套回答和演示权重
+  test_scoring.py
 ```
 
 ## 重要设计原则
@@ -180,8 +165,8 @@ configs/
 ## 对比两个 Replay 模型，生成排行榜
 
 ```bash
-python -m evalindex --data data/demo_tasks.jsonl --replay data/demo_predictions.jsonl --output runs/model-a
-python -m evalindex --data data/demo_tasks.jsonl --replay data/demo_predictions_model_b.jsonl --output runs/model-b
+python -m evalindex --data tests/fixtures/demo/tasks.jsonl --replay tests/fixtures/demo/predictions.jsonl --weights tests/fixtures/demo/weights.json --output runs/model-a
+python -m evalindex --data tests/fixtures/demo/tasks.jsonl --replay tests/fixtures/demo/predictions_model_b.jsonl --weights tests/fixtures/demo/weights.json --output runs/model-b
 python -m evalindex.compare runs/model-a/summary.json runs/model-b/summary.json --out runs/leaderboard.json
 ```
 
