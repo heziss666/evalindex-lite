@@ -71,7 +71,7 @@ foreach ($model in $models) {
 
 每次运行生成 `results.jsonl`（原始输出、参考答案、解析结果、分数、结束原因）、`summary.json`（各数据集 Accuracy、解析失败计数及原因、运行元数据）和 `badcases.jsonl`（答错和解析失败的逐题记录）。使用已保存输出复评分时，可将模型参数换成 `--replay runs/<模型>/results.jsonl`，并使用新的输出目录。
 
-MMLU-Pro 要求输出单行 `Final Answer: X`，字母大小写均可。MATH-500 从最后一行 `Final Answer:` 提取表达式，再用 Math-Verify 判定与参考答案是否等价。两个数据集都将解析失败计为 0 分，并保留在 Accuracy 的分母中。题目及选项进入模型请求，参考答案留在评分端。30 题抽样分数仅适用于本次协议。
+MMLU-Pro 要求输出单行 `Final Answer: X`，字母大小写均可。MATH-500 提示只输出一行 LaTeX 答案，评分器从最后一行 `Final Answer:` 提取表达式，再用 Math-Verify 判定与参考答案是否等价。两个数据集都将解析失败计为 0 分，并保留在 Accuracy 的分母中。题目及选项进入模型请求，参考答案留在评分端。30 题抽样分数仅适用于本次协议。
 
 ## 代码结构
 

@@ -10,8 +10,8 @@ def make_task(row):
         "question": question,
         "gold": row["answer"],
         "prompt": (
-            "Solve the problem. You may show your reasoning. End with a separate line "
-            "in the form Final Answer: $<answer>$, using LaTeX for the answer.\n\n"
+            "Solve the problem. Reply with just one line starting with Final Answer: "
+            "and put your final result in LaTeX after the colon. Do not include your working.\n\n"
             f"{question}"
         ),
     }
