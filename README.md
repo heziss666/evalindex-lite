@@ -1,6 +1,6 @@
 # EvalIndex Lite — 可运行的多维 LLM 评测项目脚手架
 
-> 这是 **v0.1 工程起点**，不是 Artificial Analysis 的复现版，也尚未实现真实 MMLU-Pro / MATH-500 / IFEval 官方评测协议。`data/demo_*` 全是自造演示数据，结果不能用于模型能力结论。
+> EvalIndex Lite 已接入真实 MMLU-Pro 与 MATH-500 题库，使用本项目的 zero-shot 抽样协议。`data/demo_*` 用于验证 Replay 链路。
 
 ## 目标
 
@@ -9,7 +9,7 @@
 ## 立刻运行（不需要 GPU、不需要 API Key）
 
 ```bash
-python -m pip install -e .
+python -m pip install -e ".[benchmarks]"
 python -m evalindex --data data/demo_tasks.jsonl --replay data/demo_predictions.jsonl --output runs/replay-demo
 python -m unittest discover -s tests -v
 ```
@@ -28,6 +28,51 @@ python -m evalindex --data data/demo_tasks.jsonl --model YOUR_MODEL_ID --output 
 
 **参数注意**：默认 temperature=0、max_tokens=1024；不同模型/推理端点可能不支持同样的采样参数，需根据模型调整并在报告中记录。`YOUR_MODEL_ID` 应当与服务端注册的 model id 一致。不要把 API Key 提交到仓库。
 
+## 运行 MMLU-Pro 和 MATH-500
+
+在项目目录执行以下 PowerShell 命令。安装额外依赖后，从固定的 Hugging Face revision 下载两套题库的 `test` split。使用 seed 42 无放回各取 30 题，另将每套的前 5 题保存为冒烟子集。
+
+```powershell
+python -m pip install -e ".[benchmarks]"
+python -m unittest discover -s tests -v
+python -m evalindex.datasets --count 30 --smoke-count 5
+```
+
+启动兼容 OpenAI Chat Completions 的服务。把服务地址和模型 ID 换成实际值，鉴权密钥如有需要可通过 `EVAL_API_KEY` 环境变量提供。以下示例使用两个端口，每个端口服务一个模型。
+
+本次运行使用 [llama.cpp b7330 的 Windows Vulkan 构建](https://github.com/ggml-org/llama.cpp/releases/tag/b7330)，权重为两个官方 Q4_K_M GGUF 文件。[Qwen2.5-0.5B-Instruct](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/blob/9217f5db79a29953eb74d5343926648285ec7e67/qwen2.5-0.5b-instruct-q4_k_m.gguf) · [Qwen2.5-1.5B-Instruct](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/blob/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_k_m.gguf)
+
+将对应 GGUF 放在工作目录，在两个终端各启动一个服务。
+
+```powershell
+.\llama-server.exe -m qwen2.5-0.5b-instruct-q4_k_m.gguf --alias qwen2.5-0.5b-instruct-q4_k_m --host 127.0.0.1 --port 18080 -ngl 99 -c 4096 -np 1
+.\llama-server.exe -m qwen2.5-1.5b-instruct-q4_k_m.gguf --alias qwen2.5-1.5b-instruct-q4_k_m --host 127.0.0.1 --port 18081 -ngl 99 -c 4096 -np 1
+```
+
+```powershell
+$cfg = Get-Content -Raw configs/benchmarks.json | ConvertFrom-Json
+$models = @(
+    @{ id = 'qwen2.5-0.5b-instruct-q4_k_m'; url = 'http://127.0.0.1:18080/v1'; revision = '9217f5db79a29953eb74d5343926648285ec7e67' },
+    @{ id = 'qwen2.5-1.5b-instruct-q4_k_m'; url = 'http://127.0.0.1:18081/v1'; revision = '91cad51170dc346986eccefdc2dd33a9da36ead9' }
+)
+foreach ($model in $models) {
+    $sample = @('--model', $model.id, '--base-url', $model.url, '--model-revision', $model.revision,
+                '--temperature', $cfg.temperature, '--max-tokens', $cfg.max_tokens)
+    python -m evalindex @sample --data data/benchmarks/smoke.jsonl --output "runs/smoke-$($model.id)"
+    if ($LASTEXITCODE -ne 0) { throw "Smoke test failed for $($model.id)" }
+}
+foreach ($model in $models) {
+    $sample = @('--model', $model.id, '--base-url', $model.url, '--model-revision', $model.revision,
+                '--temperature', $cfg.temperature, '--max-tokens', $cfg.max_tokens)
+    python -m evalindex @sample --data data/benchmarks/tasks.jsonl --output "runs/$($model.id)"
+    if ($LASTEXITCODE -ne 0) { throw "Evaluation failed for $($model.id)" }
+}
+```
+
+每次运行生成 `results.jsonl`（原始输出、参考答案、解析结果、分数、结束原因）、`summary.json`（各数据集 Accuracy、解析失败计数及原因、运行元数据）和 `badcases.jsonl`（答错和解析失败的逐题记录）。使用已保存输出复评分时，可将模型参数换成 `--replay runs/<模型>/results.jsonl`，并使用新的输出目录。
+
+MMLU-Pro 要求输出单行 `Final Answer: X`，字母大小写均可。MATH-500 从最后一行 `Final Answer:` 提取表达式，再用 Math-Verify 判定与参考答案是否等价。两个数据集都将解析失败计为 0 分，并保留在 Accuracy 的分母中。题目及选项进入模型请求，参考答案留在评分端。30 题抽样分数仅适用于本次协议。
+
 ## 代码结构
 
 ```text
@@ -35,6 +80,9 @@ src/evalindex/
   __main__.py    # 批处理运行、保存逐题结果与摘要
   model.py       # OpenAI-compatible HTTP adapter
   scoring.py     # 演示用选择题、数值题、指令约束评分
+  benchmark_scoring.py
+  datasets/     # 两个数据集的加载、抽样与题目构造
+  analysis/     # 错误样本与解析失败统计
 configs/
   index_weights.json
  data/

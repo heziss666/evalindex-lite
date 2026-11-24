@@ -2,6 +2,8 @@
 import re
 from decimal import Decimal, InvalidOperation
 
+from .benchmark_scoring import score_math_500, score_mmlu_pro
+
 CHOICE_TAG = re.compile(r"(?im)^\s*(?:final\s*answer|answer|答案)\s*[:：]\s*([A-J])(?:\s|[.。!！]|$)")
 NUMBER_TAG = re.compile(r"(?im)^\s*(?:final\s*answer|answer|答案|####)\s*[:：]?\s*([-+]?\d[\d,]*(?:\.\d+)?(?:[eE][-+]?\d+)?(?:\s*/\s*[-+]?\d[\d,]*)?)\s*(?:[.。!！]|$)")
 
@@ -50,6 +52,10 @@ def check_rule(response: str, rule: dict):
 
 def score_task(task: dict, response: str):
     kind = task["kind"]
+    if kind == "mmlu_pro":
+        return score_mmlu_pro(task, response)
+    if kind == "math_500":
+        return score_math_500(task, response)
     if kind == "choice":
         pred = extract_choice(response)
         accepted = task.get("choices", list("ABCDEFGHIJ"))

@@ -17,5 +17,11 @@ def chat_completion(prompt: str, *, model: str, base_url: str, api_key: str = ""
     with urllib.request.urlopen(request, timeout=180) as result:
         raw = json.loads(result.read().decode("utf-8"))
     latency_ms = round((time.perf_counter() - started) * 1000, 1)
-    text = raw["choices"][0]["message"].get("content") or ""
-    return {"response": text, "usage": raw.get("usage", {}), "latency_ms": latency_ms}
+    choice = raw["choices"][0]
+    return {
+        "response": choice["message"].get("content") or "",
+        "usage": raw.get("usage") or {},
+        "latency_ms": latency_ms,
+        "finish_reason": choice.get("finish_reason"),
+        "served_model": raw.get("model"),
+    }
