@@ -9,7 +9,7 @@ from .storage import Journal, fingerprint
 
 
 class Evaluation:
-    def __init__(self, tasks, models, protocol, output, workers, resume_from=None):
+    def __init__(self, tasks, models, protocol, output, workers, resume_from=()):
         self.models = models
         self.protocol = protocol
         self.jobs = [(task, role) for role in CANDIDATES for task in tasks]
@@ -18,17 +18,25 @@ class Evaluation:
         self.counter_lock = Lock()
         self.generations = Journal(output / "generations.jsonl")
         self.judgments = Journal(output / "judgments.jsonl")
-        self.previous = {}
-        if resume_from:
-            for journal in (self.generations, self.judgments):
-                self.previous[journal] = Journal(resume_from / journal.path.name, read_only=True)
+        self.previous = {
+            journal: [Journal(path / journal.path.name, read_only=True) for path in resume_from]
+            for journal in (self.generations, self.judgments)
+        }
 
     def cached(self, journal, key):
         row = journal.get(key)
-        if row is None and journal in self.previous:
-            row = self.previous[journal].get(key)
-            if row:
-                journal.append(row)
+        if row is not None:
+            return row
+        for source in self.previous[journal]:
+            cached_row = source.get(key)
+            if cached_row is None:
+                continue
+            if row is None or cached_row["status"] == "ok":
+                row = cached_row
+            if row["status"] == "ok":
+                break
+        if row is not None:
+            journal.append(row)
         return row
 
     def count_request(self, role):

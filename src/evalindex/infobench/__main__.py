@@ -83,10 +83,12 @@ def evaluate(args, settings):
     if type(workers) is not int or not 1 <= workers <= 32:
         raise ValueError("Expected between 1 and 32 workers")
     stage = "smoke" if len(tasks) <= settings["smoke_count"] else "tasks"
-    output = args.output or Path("runs/m2") / stage / args.protocol
+    variant = models["candidate_b"].get("run_variant")
+    directory = f"{args.protocol}-{variant}" if variant else args.protocol
+    output = args.output or Path("runs/m2") / stage / directory
     output.mkdir(parents=True, exist_ok=True)
-    if args.resume_from:
-        if not args.resume_from.is_dir() or args.resume_from.resolve() == output.resolve():
+    for source in args.resume_from:
+        if not source.is_dir() or source.resolve() == output.resolve():
             raise ValueError("--resume-from must be a different existing run directory")
     with run_lock(output):
         evaluation = Evaluation(tasks, models, args.protocol, output, workers, args.resume_from)
@@ -114,13 +116,20 @@ def main(argv=None):
         sub.add_argument("--data", type=Path, default=DATA_DIR / "smoke.jsonl")
         sub.add_argument("--output", type=Path)
         sub.add_argument("--protocol", choices=PROTOCOLS, default="official")
+        sub.add_argument("--candidate-b", help="Select an alternate candidate from the config, such as glm")
         sub.add_argument("--workers", type=int)
         sub.add_argument("--env-file", type=Path, default=Path(".env"))
-        sub.add_argument("--resume-from", type=Path)
+        sub.add_argument("--resume-from", action="append", type=Path, default=[],
+                         help="Reuse compatible checkpoints from this run directory (repeatable)")
         sub.add_argument("--confirm-formal", action="store_true")
     args = parser.parse_args(argv)
     try:
         settings = json.loads(args.config.read_text(encoding="utf-8"))
+        if args.mode != "export" and args.candidate_b:
+            alternatives = settings.get("candidate_b_alternatives", {})
+            if args.candidate_b not in alternatives:
+                raise ValueError(f"Unknown candidate B alternative: {args.candidate_b}")
+            settings["models"]["candidate_b"] = alternatives[args.candidate_b]
         validate_models(settings["models"])
         report = export_tasks(args, settings) if args.mode == "export" else evaluate(args, settings)
     except (OSError, ValueError, KeyError, TypeError) as exc:

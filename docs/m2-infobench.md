@@ -1,6 +1,6 @@
 # M2 · InFoBench 与 LLM Judge
 
-已完成离线验证和 5 题真实 API 冒烟。30 题正式评测中，Qwen 已完成，GLM 因服务限流暂时只有冒烟时的 5 题。39 项单元与回归测试通过，覆盖四种运行模式、错误和重试、断点续跑、评分协议隔离、复核抽样和无 API 重聚合。
+当前 Candidate B 暂用 Kimi K3.1 Pro。前一版 Qwen / GLM 的结果见下方记录。Kimi 需要在本机填好 API Key 后验证。
 
 ## 配置 API Key
 
@@ -11,19 +11,23 @@ if (!(Test-Path -LiteralPath .env)) { Copy-Item -LiteralPath .env.example -Desti
 code .env
 ```
 
-在本机 `.env` 给以下三个变量各填一行实际密钥，也可以在运行前由当前终端环境提供。环境变量优先于 `.env`。模型、Base URL、超时、重试、并发和价格在 `configs/infobench.json` 调整，`.env` 已被 Git 忽略。
+当前配置读取 Qwen、Kimi、DeepSeek 三把密钥。已有 Qwen 和 DeepSeek 配置时，只需填写 `MOONSHOT_API_KEY=你的密钥`，也可在当前终端提供同名环境变量。环境变量优先于 `.env`。`.env` 已被 Git 忽略，模型和接口参数在 `configs/infobench.json` 调整。[Moonshot API Key 管理](https://platform.kimi.com/console/api-keys)
 
 | 角色 | 模型 ID | Base URL | `.env` 变量 |
 | --- | --- | --- | --- |
 | Candidate A | `qwen3.7-flash-2026-07-15` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `DASHSCOPE_API_KEY` |
-| Candidate B | `glm-4.7-flash` | `https://open.bigmodel.cn/api/paas/v4` | `BIGMODEL_API_KEY` |
+| Candidate B | `kimi-k3.1-pro` | `https://api.moonshot.cn/v1` | `MOONSHOT_API_KEY` |
 | Judge A | `deepseek-v4-pro` | `https://api.deepseek.com` | `DEEPSEEK_API_KEY` |
 
-Qwen 示例对应百炼北京按量付费，使用同地域 Key，也可以填控制台给出的业务空间专属地址。Base URL 由客户端追加 `/chat/completions`。三个角色均配置关闭思考，候选输出上限 2,048 tokens，Judge 上限 256 tokens。冒烟后默认并发调为 1，适配 GLM 免费接口的实际限流表现。GLM 免费接口实际可用额度及限流以账号为准。[百炼接口](https://help.aliyun.com/zh/model-studio/base-url) · [智谱模型与接口](https://docs.bigmodel.cn/cn/guide/models/free/glm-4.7-flash) · [智谱免费公告](https://www.zhipuai.cn/zh/news/148) · [DeepSeek 接口](https://api-docs.deepseek.com/zh-cn/api/create-chat-completion/)
+Qwen 示例对应百炼北京按量付费，使用同地域 Key。Base URL 由客户端追加 `/chat/completions`。Qwen 和 DeepSeek 关闭思考，输出上限分别为 2,048 和 256 tokens。Kimi K3.1 Pro 始终开启思考，使用 `reasoning_effort: low` 和 `max_completion_tokens: 4096`，由服务端使用固定采样参数。默认并发为 1。[百炼接口](https://help.aliyun.com/zh/model-studio/base-url) · [Kimi API 参数](https://platform.kimi.com/docs/guide/kimi-k3-1-pro-quickstart) · [DeepSeek 接口](https://api-docs.deepseek.com/zh-cn/api/create-chat-completion/)
+
+需要恢复 GLM 时，在命令里加 `--candidate-b glm`。该配置使用原来的 `BIGMODEL_API_KEY` 和原运行目录。[智谱模型与接口](https://docs.bigmodel.cn/cn/guide/models/free/glm-4.7-flash)
 
 ## 费用估算
 
-按 2026-11-24 可查的官方人民币单价，单位为每百万 Token。北京百炼短输入档 Qwen 约 ¥0.20 输入和 ¥0.80 输出。GLM 按免费档 ¥0。DeepSeek Pro 高峰为 ¥9.00 未缓存输入和 ¥27.00 输出，空闲为 ¥4.50 和 ¥13.50。实际账单以控制台为准。 [百炼价格](https://help.aliyun.com/zh/model-studio/model-pricing) · [智谱价格](https://bigmodel.cn/pricing) · [DeepSeek 价格与时段](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)
+Kimi K3.1 Pro 普速版每百万 Token 未命中输入 ¥13、缓存命中输入 ¥1.30、输出 ¥68。按每题平均 1,200 输出 tokens 估算，Kimi 生成部分约 ¥0.41 / 5 题、¥2.48 / 30 题，另计新增的 Judge 调用、重试和缓存写入费。用 `dry-run` 查看当前设置的整轮预算。[Kimi 官方单价](https://www.kimi.com/news/kimi-k3-1-pro) · [缓存计费](https://platform.kimi.com/docs/pricing/chat)
+
+下表保留 GLM 方案的预算基线。按 2026-11-24 可查的官方人民币每百万 Token 单价，北京百炼短输入档 Qwen 约 ¥0.20 输入和 ¥0.80 输出。GLM 按免费档 ¥0。DeepSeek Pro 高峰为 ¥9.00 未缓存输入和 ¥27.00 输出，空闲为 ¥4.50 和 ¥13.50。实际账单以控制台为准。[百炼价格](https://help.aliyun.com/zh/model-studio/model-pricing) · [智谱价格](https://bigmodel.cn/pricing) · [DeepSeek 价格与时段](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)
 
 | 阶段 | 题数 | 每个模型的要求数 | 生成 / Judge 请求 | Pro Judge 空闲 / 高峰 | Flash Judge 空闲 / 高峰 |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -86,27 +90,27 @@ python -m evalindex.infobench dry-run --data data/benchmarks/m2/tasks.jsonl
 填入密钥后，冒烟可一步完成。
 
 ```powershell
-python -m evalindex.infobench end-to-end
+python -m evalindex.infobench end-to-end --resume-from runs/m2/smoke/official
 ```
 
-也可分开执行。默认共用 `runs/m2/smoke/official/`。
+原冒烟目录存在时，以上命令会复用 Qwen 的回答和已有评分，Kimi 的结果写入 `runs/m2/smoke/official-kimi/`。也可分开执行。
 
 ```powershell
-python -m evalindex.infobench generate
-python -m evalindex.infobench judge
+python -m evalindex.infobench generate --resume-from runs/m2/smoke/official
+python -m evalindex.infobench judge --resume-from runs/m2/smoke/official
 python -m evalindex.infobench aggregate
 ```
 
 用冒烟生成的回答做少量结构化 Judge 验证时，从原运行复用候选回答。
 
 ```powershell
-python -m evalindex.infobench judge --protocol atomic --resume-from runs/m2/smoke/official
+python -m evalindex.infobench judge --protocol atomic --resume-from runs/m2/smoke/official-kimi
 ```
 
 确认正式预算后运行下列命令。相同题目、模型配置、回复和评分提示的成功记录会复用。重复执行同一命令可续跑。
 
 ```powershell
-python -m evalindex.infobench end-to-end --data data/benchmarks/m2/tasks.jsonl --resume-from runs/m2/smoke/official --confirm-formal
+python -m evalindex.infobench end-to-end --data data/benchmarks/m2/tasks.jsonl --resume-from runs/m2/smoke/official-kimi --resume-from runs/m2/tasks/official --confirm-formal
 ```
 
 ## 数据与评分协议

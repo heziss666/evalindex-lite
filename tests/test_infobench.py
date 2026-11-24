@@ -115,7 +115,7 @@ class TestInFoBench(TestCase):
         self.assertAlmostEqual(report["estimated_reported_cost"], 0.00092)
 
     def test_glm_quota_stops_retries_and_records_only_error_code(self):
-        model = json.loads(Path("configs/infobench.json").read_text(encoding="utf-8"))["models"]["candidate_b"]
+        model = json.loads(Path("configs/infobench.json").read_text(encoding="utf-8"))["candidate_b_alternatives"]["glm"]
         body = BytesIO(b'{"error":{"code":"1308","message":"private details"}}')
         denied = HTTPError("https://example.invalid", 429, "", {}, body)
         with patch.object(api, "chat_completion", side_effect=denied) as call, patch.object(api.time, "sleep") as sleep:
@@ -231,6 +231,11 @@ class TestModes(TestCase):
         self.assertEqual(len(server.calls), 0)
         run("generate")
         self.assertEqual(len(server.calls), 4)
+        kimi_request = next(call for call in server.calls if call["model"] == "candidate_b")
+        self.assertEqual(kimi_request["max_completion_tokens"], 4096)
+        self.assertEqual(kimi_request["reasoning_effort"], "low")
+        self.assertNotIn("max_tokens", kimi_request)
+        self.assertNotIn("temperature", kimi_request)
         self.assertFalse((official / "judgments.jsonl").exists())
         run("judge")
         self.assertEqual(len(server.calls), 10)
@@ -241,7 +246,10 @@ class TestModes(TestCase):
         run("aggregate")
         self.assertEqual(len(server.calls), 10)
         self.assertEqual(first, json.loads((official / "summary.json").read_text(encoding="utf-8")))
-        run("end-to-end", atomic, ("--protocol", "atomic", "--resume-from", str(official)))
+        empty = parent / "empty"
+        empty.mkdir()
+        run("end-to-end", atomic,
+            ("--protocol", "atomic", "--resume-from", str(empty), "--resume-from", str(official)))
         self.assertEqual(len(server.calls), 16)
         self.assertTrue(all(len(row["messages"]) == 2 for row in server.calls[-6:]))
         modified = deepcopy(config)

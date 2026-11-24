@@ -11,7 +11,7 @@ from ..model import chat_completion
 
 CANDIDATES = ("candidate_a", "candidate_b")
 ROLES = (*CANDIDATES, "judge_a")
-EXTRA_FORBIDDEN = {"model", "messages", "max_tokens", "temperature", "stream", "api_key", "headers"}
+EXTRA_FORBIDDEN = {"model", "messages", "max_tokens", "max_completion_tokens", "temperature", "stream", "api_key", "headers"}
 # BigModel's account, quota, and entitlement errors need an external change before retrying.
 GLM_TERMINAL_LIMITS = {"1113", "1308", "1309", "1310", "1311", *(str(code) for code in range(1313, 1322))}
 
@@ -34,9 +34,16 @@ def validate_models(models):
         for key, low, high in (("timeout", 1, 600), ("retries", 0, 5),
                                ("max_tokens", 1, 32768), ("temperature", 0, 2)):
             value = model.get(key)
+            if key == "temperature" and key in model and value is None:
+                continue
             expected = (int, float) if key in {"timeout", "temperature"} else int
             if isinstance(value, bool) or not isinstance(value, expected) or not low <= value <= high:
                 raise ValueError(f"Invalid {role}.{key}")
+        if model.get("token_limit_field", "max_tokens") not in {"max_tokens", "max_completion_tokens"}:
+            raise ValueError(f"Invalid token limit field for {role}")
+        variant = model.get("run_variant", "")
+        if not isinstance(variant, str) or not re.fullmatch(r"[a-z0-9-]*", variant):
+            raise ValueError(f"Invalid run variant for {role}")
         extra = model.get("extra", {})
         if not isinstance(extra, dict) or EXTRA_FORBIDDEN & extra.keys():
             raise ValueError(f"Invalid extra request parameters for {role}")
@@ -54,9 +61,12 @@ def validate_models(models):
 
 
 def model_identity(model):
-    return {key: model[key] for key in (
+    identity = {key: model[key] for key in (
         "provider", "model", "base_url", "temperature", "max_tokens", "timeout", "retries"
     )} | {"extra": model.get("extra", {}), "revision": model.get("revision")}
+    if model.get("token_limit_field", "max_tokens") != "max_tokens":
+        identity["token_limit_field"] = model["token_limit_field"]
+    return identity
 
 
 def require_keys(models, roles):
@@ -88,6 +98,7 @@ def request(model, messages, parse=None, save=None):
                 "", messages=messages, model=model["model"], base_url=model["base_url"],
                 api_key=os.environ.get(model.get("api_key_env") or "", ""), timeout=model["timeout"],
                 temperature=model["temperature"], max_tokens=model["max_tokens"], extra=model.get("extra"),
+                token_limit_field=model.get("token_limit_field", "max_tokens"),
             )
         except HTTPError as exc:
             status, result = "api_error", {"error": f"http_{exc.code}"}
