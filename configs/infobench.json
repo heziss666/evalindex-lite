@@ -1,0 +1,47 @@
+{
+  "seed": 42,
+  "sample_count": 30,
+  "smoke_count": 5,
+  "workers": 2,
+  "models": {
+    "candidate_a": {
+      "provider": "qwen",
+      "model": "qwen3.7-flash-2026-07-15",
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api_key_env": "DASHSCOPE_API_KEY",
+      "temperature": 0,
+      "max_tokens": 2048,
+      "estimated_output_tokens": 600,
+      "timeout": 90,
+      "retries": 2,
+      "extra": {"enable_thinking": false},
+      "pricing": {"currency": "CNY", "input": 0.2, "output": 0.8}
+    },
+    "candidate_b": {
+      "provider": "glm",
+      "model": "glm-4.7-flash",
+      "base_url": "https://open.bigmodel.cn/api/paas/v4",
+      "api_key_env": "BIGMODEL_API_KEY",
+      "temperature": 0,
+      "max_tokens": 2048,
+      "estimated_output_tokens": 600,
+      "timeout": 90,
+      "retries": 2,
+      "extra": {"thinking": {"type": "disabled"}},
+      "pricing": {"currency": "CNY", "input": 0, "output": 0}
+    },
+    "judge_a": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "base_url": "https://api.deepseek.com",
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "temperature": 0,
+      "max_tokens": 256,
+      "estimated_output_tokens": 12,
+      "timeout": 90,
+      "retries": 2,
+      "extra": {"thinking": {"type": "disabled"}},
+      "pricing": {"currency": "CNY", "input": 9, "cached_input": 0.3, "output": 27}
+    }
+  }
+}

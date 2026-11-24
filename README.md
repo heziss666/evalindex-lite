@@ -4,6 +4,17 @@
 
 [当前 M1 实验报告](docs/m1-ifeval-report.md)
 
+## M2 · InFoBench
+
+InFoBench 通过逐条语义判定评估指令遵循，支持官方 YES/NO 评分和独立的 EvalIndex JSON 评分。它作为单独的评测维度。当前可离线抽题、估算费用并用 Mock 验证流程。
+
+```powershell
+python -m evalindex.infobench export
+python -m evalindex.infobench dry-run
+```
+
+[M2 数据、API 配置、费用及复现命令](docs/m2-infobench.md)
+
 ## 目标
 
 对多个模型以统一数据、版本、采样协议完成批量推理，并将推理结果交给 benchmark-specific 评分器：MMLU-Pro（选项正确率）、MATH-500（数学等价）、IFEval（官方 Strict/Loose 约束检查）、自建知识工作任务（Atomic Rubric / Pairwise Judge / Crowd-BT），最终生成细分指标、综合指数、置信区间和 Badcase。注意自定义指数不等于 AA 官方指数。
