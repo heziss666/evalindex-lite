@@ -1,6 +1,6 @@
 # M2 · InFoBench 与 LLM Judge
 
-当前 Candidate B 暂用 Kimi K3.1 Pro，已完成与 Qwen 的 5 题真实冒烟。30 题正式结果仍为前一轮 Qwen / GLM 的记录。
+当前 Candidate B 暂用 Kimi K3.1 Pro，已完成与 Qwen 的 5 题真实冒烟及 30 题正式评测。
 
 ## 配置 API Key
 
@@ -25,18 +25,9 @@ Qwen 示例对应百炼北京按量付费，使用同地域 Key。Base URL 由�
 
 ## 费用估算
 
-Kimi K3.1 Pro 普速版每百万 Token 未命中输入 ¥13、缓存命中输入 ¥1.30、输出 ¥68。按每题平均 1,200 输出 tokens 估算，Kimi 生成部分约 ¥0.41 / 5 题、¥2.48 / 30 题，另计新增的 Judge 调用、重试和缓存写入费。用 `dry-run` 查看当前设置的整轮预算。[Kimi 官方单价](https://www.kimi.com/news/kimi-k3-1-pro) · [缓存计费](https://platform.kimi.com/docs/pricing/chat)
+Kimi K3.1 Pro 普速版每百万 Token 未命中输入 ¥13、缓存命中输入 ¥1.30、输出 ¥68。按每题平均 1,200 输出 tokens 估算，Kimi 生成部分约 ¥0.41 / 5 题、¥2.48 / 30 题，另计新增的 Judge 调用、重试和缓存写入费。[Kimi 官方单价](https://www.kimi.com/news/kimi-k3-1-pro) · [缓存计费](https://platform.kimi.com/docs/pricing/chat)
 
-下表保留 GLM 方案的预算基线。按 2026-11-24 可查的官方人民币每百万 Token 单价，北京百炼短输入档 Qwen 约 ¥0.20 输入和 ¥0.80 输出。GLM 按免费档 ¥0。DeepSeek Pro 高峰为 ¥9.00 未缓存输入和 ¥27.00 输出，空闲为 ¥4.50 和 ¥13.50。实际账单以控制台为准。[百炼价格](https://help.aliyun.com/zh/model-studio/model-pricing) · [智谱价格](https://bigmodel.cn/pricing) · [DeepSeek 价格与时段](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)
-
-| 阶段 | 题数 | 每个模型的要求数 | 生成 / Judge 请求 | Pro Judge 空闲 / 高峰 | Flash Judge 空闲 / 高峰 |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| 冒烟 | 5 | 22 | 10 / 44 | ¥0.22 / ¥0.43 | ¥0.05 / ¥0.10 |
-| 正式 | 30 | 129 | 60 / 258 | ¥1.25 / ¥2.49 | ¥0.29 / ¥0.57 |
-
-假设每条候选回答 600 输出 tokens、每条 Judge 回复 12 tokens，输入按约 4 字符/token 加消息开销估计。两行是各阶段独立运行的预算，未计重试、缓存或免费券。正式运行复用冒烟成功记录时，首次完整成功后还需约 50 次生成和 214 次 Judge 请求。若候选和 Judge 都用满配置的输出上限，高峰下冒烟与正式约 ¥1.51、¥8.78，依然是场景估计。
-
-建议首轮采用 Pro Judge 并在空闲时段运行。它是该平台的较强档位，用于评分时与两个候选模型分属不同平台。其准确性需要人工复审验证。若优先节省，可以把 `judge_a.model` 改为 `deepseek-flash`，高峰 `pricing` 改为输入 2、缓存输入 0.04、输出 8。换 Judge 后使用新的运行目录，分别查看成绩。[DeepSeek 模型与价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)
+北京百炼短输入档 Qwen 约 ¥0.20 输入和 ¥0.80 输出。DeepSeek V4 Pro 每百万 Token 高峰为 ¥9.00 未缓存输入、¥0.30 缓存命中输入和 ¥27.00 输出，空闲时段单价减半。项目的 `dry-run` 按配置单价估算整轮请求，不扣减可复用的调用和缓存。下文分别记录两次真实运行的新增费用。[百炼价格](https://help.aliyun.com/zh/model-studio/model-pricing) · [DeepSeek 价格与时段](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)
 
 ## 真实冒烟结果
 
@@ -57,42 +48,28 @@ Kimi 共发出 13 次请求，5 次成功、6 次 HTTP 429、2 次超时。第�
 
 DeepSeek 输入中 12,160 tokens 命中缓存，按空闲时段单价估算。Kimi 的 2,517 个思考 tokens 已含在输出 tokens 中。8 次失败请求未上报用量，估算未计入这些请求，结算以平台账单为准。原始推理、逐要求评分与错误样本在本地 `runs/m2/smoke/official-kimi/`。离线重聚合发出 0 次 API 请求，五个产物均与保存版本逐字节一致。[Kimi 单价](https://www.kimi.com/news/kimi-k3-1-pro) · [DeepSeek 缓存与时段单价](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)
 
-### 前一轮 GLM 冒烟
-
-2026-11-24 晚间（北京时间）使用 `official` 协议、固定 5 题和 DeepSeek V4 Pro 完成真实冒烟。每个模型有 22 条要求，两边评分覆盖率都是 100%。
-
-| 候选模型 | DRFR | Prompt-level Mean Pass | Prompt-level All-pass |
-| --- | ---: | ---: | ---: |
-| Qwen3.7 Flash | 86.36%（19/22） | 85.0% | 60.0%（3/5） |
-| GLM-4.7-Flash | 68.18%（15/22） | 66.5% | 20.0%（1/5） |
-
-| 角色 | API 请求 | 已报告输入 tokens | 已报告输出 tokens |
-| --- | ---: | ---: | ---: |
-| Qwen | 5 | 385 | 2,979 |
-| GLM | 20 | 344 | 2,753 |
-| DeepSeek Judge | 44 | 37,419 | 44 |
-| 合计 | 69 | 38,148 | 5,776 |
-
-GLM 的 20 次请求中有 15 次返回 HTTP 429，未上报用量。首次使用并发 2，切到并发 1 后续跑两次，最终 5 题均生成成功，最慢一次成功请求约 72 秒。续跑期间复用了已完成的回答与 Judge 判定。44 条 Judge 回复均成功解析，候选与 Judge 成功输出均未截断。
-
-DeepSeek 输入中 26,112 tokens 命中缓存，11,307 tokens 未命中。按已上报用量和空闲时段单价估算，总费用约 **¥0.058**。结算金额以平台账单为准。离线 Aggregate 的 API 调用数为 0，重新生成的五个结果文件均与原文件一致。逐次生成与判分记录已随续跑保存在 `runs/m2/tasks/official/`，旧冒烟目录已清理。[DeepSeek 缓存与时段单价](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)
-
 ## 30 题正式评测
 
-经确认后，于 2026-11-24 20:05–20:17（北京时间）运行正式题单。每个候选有 30 题、129 条要求，复用冒烟的 10 次成功生成和 44 次 Judge 判定。题单 SHA-256 为 `b567c1a0b09e0dd4131e12d64d73717ea9fe2fdcfa6258db40e13dfc8a4e2c19`。
+2026-11-24 20:44–21:05（北京时间）使用 `official` 协议。两位候选使用同一份固定题单，每个候选 30 题、129 条要求。题单 SHA-256 为 `b567c1a0b09e0dd4131e12d64d73717ea9fe2fdcfa6258db40e13dfc8a4e2c19`。
 
-| 候选模型 | 生成覆盖 | 评分覆盖 | DRFR | Prompt Mean Pass | Prompt All-pass |
+| 候选模型 | 生成覆盖 | 评分覆盖 | DRFR | Prompt-level Mean Pass | Prompt-level All-pass |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Qwen3.7 Flash | 30/30 | 100.00%（129/129） | 82.17%（106/129） | 81.36% | 56.67%（17/30） |
-| GLM-4.7-Flash | 5/30 | 17.05%（22/129） | 待补齐 | 待补齐 | 待补齐 |
+| Qwen3.7 Flash | 30/30 | 100%（129/129） | 82.17%（106/129） | 81.36% | 56.67%（17/30） |
+| Kimi K3.1 Pro | 30/30 | 100%（129/129） | 91.47%（118/129） | 91.80% | 70.00%（21/30） |
 
-Qwen 的 3 份回答达到输出上限，并按已返回文本评分。DeepSeek 完成两边可评分的全部 151 条要求，Judge 错误为 0。GLM 的 25 个新增题未生成，复用的 5 题单独观察为 15/22 条通过。由于覆盖率不同，当前榜单只列完成评分的候选，双模型比较需等 GLM 补齐。
+本轮复用 Qwen 已有的 30 份正式回答和 129 条判分，以及 Kimi 冒烟的 5 份回答和 22 条判分。Kimi 新生成 25 份回答，全程单并发，新题之间等待 15 秒。其中一次请求在约 120 秒超时，重试后约 110 秒返回。正式阶段无新增 HTTP 429。Kimi 无截断，Qwen 有 3 份回答达到输出上限，按已返回的文本评判。
 
-正式阶段新增 **213 次请求**，包括 25 次 Qwen 生成、81 次 GLM 尝试和 107 次 Judge 调用。其中 GLM 新增 79 次 HTTP 429、2 次超时，这些失败未上报用量。单并发和两轮延时探测均未恢复。探测记录到官方业务错误码 `1305`（访问量过大）与 `1302`（账户速率限制）。客户端现在保留数字错误码并延长 GLM 429 的退避；明确的账户或配额错误会结束该次重试。[智谱官方错误码](https://docs.bigmodel.cn/cn/api/api-code)
+DeepSeek V4 Pro 给两位候选合计完成 258 条判分，解析失败为 0。`badcases.jsonl` 记录 Kimi 的 11 条未通过要求、Qwen 的 23 条未通过要求和 3 条回答截断记录。`human_review.jsonl` 保留 20 条待人工复核的判分。本次成绩来自 30 道抽样题和自动判分。
 
-新增已报告用量为 **121,116 输入 tokens、19,805 输出 tokens**。按实际缓存量和空闲时段单价估算，新增费用约 **¥0.179**，冒烟加正式累计约 **¥0.237**。这些是按已上报用量估算的金额，结算以平台账单为准。[DeepSeek 时段及缓存单价](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)
+| 新增调用 | API 请求 | 已报告输入 tokens | 已报告输出 tokens | 估算费用 |
+| --- | ---: | ---: | ---: | ---: |
+| Kimi 生成 | 26 | 3,825 | 18,580 | ¥1.313 |
+| DeepSeek Judge | 107 | 77,520 | 107 | ¥0.111 |
+| 合计 | 133 | 81,345 | 18,687 | ¥1.424 |
 
-本地 `runs/m2/tasks/official/` 保存结果、错误记录和 `human_review.jsonl`。复核清单包含 20 条判定，覆盖两个候选的通过与失败，也包含关联截断回答的记录。人工标签留空。离线 Aggregate 发出 0 次请求，重聚合的五个结果文件与保存版本逐字节一致。
+DeepSeek 本轮新增输入中 55,040 tokens 命中缓存，按空闲时段单价估算。Kimi 的 7,742 个思考 tokens 已含在输出 tokens 中。一次超时未上报用量，未计入估算。Kimi 冒烟和正式阶段合计新增约 ¥1.803，复用记录的历史费用另计。结算以平台账单为准。[Kimi 单价](https://www.kimi.com/news/kimi-k3-1-pro) · [DeepSeek 价格与时段](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)
+
+正式产物在本地 `runs/m2/tasks/official-kimi/`。离线重聚合发出 0 次 API 请求，五个产物与保存版本逐字节一致。
 
 ## 命令
 
@@ -109,14 +86,14 @@ python -m evalindex.infobench dry-run --data data/benchmarks/m2/tasks.jsonl
 填入密钥后，冒烟可一步完成。
 
 ```powershell
-python -m evalindex.infobench end-to-end --resume-from runs/m2/tasks/official
+python -m evalindex.infobench end-to-end --resume-from runs/m2/tasks/official-kimi
 ```
 
-上一轮正式目录存在时，以上命令会复用冒烟题对应的 Qwen 回答和判分，Kimi 的结果写入 `runs/m2/smoke/official-kimi/`。也可分开执行。
+已有正式结果时，以上命令会复用匹配的回答和判分，冒烟结果保存在 `runs/m2/smoke/official-kimi/`。也可分开执行。
 
 ```powershell
-python -m evalindex.infobench generate --resume-from runs/m2/tasks/official
-python -m evalindex.infobench judge --resume-from runs/m2/tasks/official
+python -m evalindex.infobench generate --resume-from runs/m2/tasks/official-kimi
+python -m evalindex.infobench judge --resume-from runs/m2/tasks/official-kimi
 python -m evalindex.infobench aggregate
 ```
 
@@ -129,7 +106,7 @@ python -m evalindex.infobench judge --protocol atomic --resume-from runs/m2/smok
 确认正式预算后运行下列命令。相同题目、模型配置、回复和评分提示的成功记录会复用。重复执行同一命令可续跑。
 
 ```powershell
-python -m evalindex.infobench end-to-end --data data/benchmarks/m2/tasks.jsonl --resume-from runs/m2/smoke/official-kimi --resume-from runs/m2/tasks/official --confirm-formal
+python -m evalindex.infobench end-to-end --data data/benchmarks/m2/tasks.jsonl --resume-from runs/m2/smoke/official-kimi --confirm-formal
 ```
 
 ## 数据与评分协议
